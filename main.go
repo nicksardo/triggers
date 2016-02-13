@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/iron-io/iron_go3/cache"
 	"github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
 	"github.com/iron-io/iron_go3/worker"
@@ -32,6 +33,7 @@ var (
 type Config struct {
 	Environments map[string]config.Settings `json:"envs"`
 	Alerts       []QueueWorkerAlert         `json:"alerts"`
+	CacheEnv     string                     `json:"cacheEnv"`
 }
 
 type QueueWorkerAlert struct {
@@ -70,6 +72,14 @@ func main() {
 		return
 	}
 
+	cacheEnv, exists := c.Environments[c.CacheEnv]
+	if !exists {
+		log.Fatalln("No cache environment set")
+		return
+	}
+	config.ManualConfig("iron_cache", &cacheEnv)
+	queueCache := cache.New("autoscale-prevs")
+
 	for {
 		if time.Since(start) > maxRunTime {
 			fmt.Println("No triggers specified for an alert")
@@ -78,6 +88,7 @@ func main() {
 
 		for _, alert := range c.Alerts {
 			if len(alert.Triggers) == 0 {
+				fmt.Println("No triggers found for alert")
 				continue
 			}
 
@@ -85,9 +96,15 @@ func main() {
 			key := queueKey(alert)
 
 			// Get previous size
-			if v, e := prev[key]; e {
-				prevQueueSize = v
+			if _, e := prev[key]; !e {
+				v, err := queueCache.Get(key)
+				if err != nil {
+					fmt.Println("Could not get cache", err)
+				} else {
+					prev[key] = int(v.(float64))
+				}
 			}
+			prevQueueSize = prev[key]
 
 			queueEnv, exists := c.Environments[alert.QueueEnv]
 			if !exists {
@@ -105,6 +122,7 @@ func main() {
 
 			queueSize = info.Size
 			// Update previous size
+			queueCache.Set(key, info.Size, 900)
 			prev[key] = info.Size
 
 			workerEnv, exists := c.Environments[alert.WorkerEnv]
