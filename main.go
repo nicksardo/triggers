@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/iron-io/iron_go3/api"
 	"github.com/iron-io/iron_go3/cache"
 	"github.com/iron-io/iron_go3/config"
 	"github.com/iron-io/iron_go3/mq"
@@ -28,6 +29,7 @@ const (
 var (
 	prev    map[string]int
 	codeIds map[string]string
+	client  *http.Client
 )
 
 type Config struct {
@@ -58,6 +60,7 @@ func main() {
 	start := time.Now()
 	prev = make(map[string]int)
 	codeIds = make(map[string]string)
+	client = api.HttpClient
 
 	// Retrieve configuration
 	c := &Config{}
@@ -119,11 +122,10 @@ func main() {
 				fmt.Println("Could not get information about", alert.QueueName, err)
 				continue
 			}
-
 			queueSize = info.Size
 			// Update previous size
-			queueCache.Set(key, info.Size, 900)
-			prev[key] = info.Size
+			go queueCache.Set(key, queueSize, 900)
+			prev[key] = queueSize
 
 			workerEnv, exists := c.Environments[alert.WorkerEnv]
 			if !exists {
@@ -204,7 +206,7 @@ func workerStats(env *config.Settings, codeName string) (queued, running int, er
 	}
 
 	url := fmt.Sprintf("https://%s/2/projects/%s/codes/%s/stats?oauth=%s", swapi, env.ProjectId, codeID, env.Token)
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		return 0, 0, err
 	}
