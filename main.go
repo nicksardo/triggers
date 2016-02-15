@@ -80,9 +80,9 @@ func main() {
 		log.Fatalln("No cache environment set")
 		return
 	}
-	config.ManualConfig("iron_cache", &cacheEnv)
-	queueCache := cache.New("autoscale-prevs")
 
+	cacheConfig := config.ManualConfig("iron_cache", &cacheEnv)
+	queueCache := &cache.Cache{Settings: cacheConfig, Name: "autoscale-prevs"}
 	for {
 		if time.Since(start) > maxRunTime {
 			fmt.Println("No triggers specified for an alert")
@@ -139,7 +139,7 @@ func main() {
 			}
 
 			launch := evalTriggers(queued, running, queueSize, prevQueueSize, alert.Triggers)
-			fmt.Printf("Queue: %s (size=%d, prev=%d), CodeName=%s (queued=%d, running=%d), Launching %d\n", alert.QueueName, queueSize, prevQueueSize, alert.WorkerName, queued, running, launch)
+			fmt.Printf("%v | Queue: %s (size=%d, prev=%d), CodeName=%s (queued=%d, running=%d), Launching %d\n", time.Now().Format(time.ANSIC), alert.QueueName, queueSize, prevQueueSize, alert.WorkerName, queued, running, launch)
 
 			if launch > 0 {
 				workerConfig := config.ManualConfig("iron_worker", &workerEnv)
