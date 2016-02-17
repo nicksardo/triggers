@@ -65,11 +65,11 @@ If the queue size = exactly VALUE, spawn 1 task.
 If the queue size grows by VALUE messages since the last check time, spawn 1 task. Note that the check interval is adjustable in the code
 
 ## Deploying to IronWorker
-If you want to skip compiling the code yourself, you can skip to step 3 and use `nicksardo/triggers:0.1`
+If you want to skip compiling the code yourself, you can go to step 3 and use `nicksardo/triggers:0.1`
 
 ##### 1. Build this executable
 ```shell
-docker run --rm -it -v $PWD:/go/src/a -w /go/src/a iron/go:dev sh -c "go get ./... && go build -o trigger"
+docker run --rm -it -v $PWD:/go/src/a -w /go/src/a iron/go:dev sh -c "go get ./... && go build -o triggers"
 ```
 
 ##### 2. Build dockerfile and push to your docker registry
