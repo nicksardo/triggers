@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/iron-io/iron_go3/api"
@@ -111,7 +112,10 @@ func main() {
 			if _, e := prev[key]; !e {
 				v, err := queueCache.Get(key)
 				if err != nil {
-					fmt.Println("Could not get cache", err)
+					if !strings.Contains(err.Error(), "not found") {
+						// Print errors not associated with cache/key not found errors
+						fmt.Println(err)
+					}
 				} else {
 					prev[key] = int(v.(float64))
 				}
