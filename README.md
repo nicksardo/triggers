@@ -45,7 +45,9 @@ go run main.go
 			"cluster":"ABC"
 		}
 	],
-	"cacheEnv":"w"
+	"cacheEnv":"w",
+	"interval": 10,
+	"runtime": 1800
 }
 ```
 
@@ -54,6 +56,8 @@ go run main.go
 `queueEnv` or `workerEnv`: these values are found under defined environments above  
 `cluster`: tasks for this worker are spawned on this cluster   
 `cacheEnv`: this scaler code caches the last known queue size, provide an environment to Iron Cache  
+`interval`: polling frequency for checking the queue sizes & launching tasks (optional, default: 10 sec)    
+`runtime`: seconds this task will live for (optional, default: 1800 seconds)  
 
 #### Triggers
 Triggers will tell the scaler how many tasks to spawn.  Given more than one trigger to an alert object, the max tasks generated among all triggers will be used.
@@ -62,7 +66,7 @@ For every VALUE messages on the queue, spawn 1 task.
 ###### `fixed`
 If the queue size = exactly VALUE, spawn 1 task.  
 ###### `progressive`
-If the queue size grows by VALUE messages since the last check time, spawn 1 task. Note that the check interval is adjustable in the code
+If the queue size grows by VALUE messages since the last check time, spawn 1 task. Note this is affected by the `interval` parameter.  
 
 ## Deploying to IronWorker
 If you want to skip compiling the code yourself, you can go to step 3 and use `nicksardo/triggers:0.1`

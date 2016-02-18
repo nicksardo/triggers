@@ -14,10 +14,10 @@ import (
 	"github.com/iron-io/iron_go3/worker"
 )
 
-const (
-	interval   = 5 * time.Second
-	maxRunTime = 30 * time.Minute
-	swapi      = "worker-aws-us-east-1.iron.io"
+var (
+	interval = 10 * time.Second
+	runtime  = 30 * time.Minute
+	swapi    = "worker-aws-us-east-1.iron.io"
 )
 
 const (
@@ -36,6 +36,8 @@ type Config struct {
 	Environments map[string]config.Settings `json:"envs"`
 	Alerts       []QueueWorkerAlert         `json:"alerts"`
 	CacheEnv     string                     `json:"cacheEnv"`
+	Interval     *int                       `json:"interval,omitempty"`
+	Runtime      *int                       `json:"runtime,omitempty"`
 }
 
 type QueueWorkerAlert struct {
@@ -75,6 +77,14 @@ func main() {
 		return
 	}
 
+	if c.Interval != nil {
+		interval = time.Duration(*c.Interval) * time.Second
+	}
+
+	if c.Runtime != nil {
+		runtime = time.Duration(*c.Runtime) * time.Second
+	}
+
 	cacheEnv, exists := c.Environments[c.CacheEnv]
 	if !exists {
 		log.Fatalln("No cache environment set")
@@ -84,8 +94,7 @@ func main() {
 	cacheConfig := config.ManualConfig("iron_cache", &cacheEnv)
 	queueCache := &cache.Cache{Settings: cacheConfig, Name: "autoscale-prevs"}
 	for {
-		if time.Since(start) > maxRunTime {
-			fmt.Println("No triggers specified for an alert")
+		if time.Since(start) > runtime {
 			break
 		}
 

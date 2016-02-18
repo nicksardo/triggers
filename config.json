@@ -26,5 +26,7 @@
 			"cluster":"ABC"
 		}
 	],
-	"cacheEnv":"w"
+	"cacheEnv":"w",
+	"interval": 10,
+	"runtime": 1800
 }
