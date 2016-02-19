@@ -239,9 +239,6 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 		switch t.Typ {
 		case TriggerFixed:
 			if queueSize >= t.Value {
-				if t.Value <= prevQueueSize {
-					continue
-				}
 				launch = max(launch, 1)
 			}
 		case TriggerProgressive:
@@ -251,16 +248,12 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 
 			previous_level := prevQueueSize / t.Value
 			current_level := queueSize / t.Value
-			if current_level > previous_level {
-				launch = max(launch, current_level-previous_level)
-			}
+			launch = max(launch, current_level-previous_level)
 		case TriggerRatio:
 			expected_runners := (queueSize + t.Value - 1) / t.Value // Only have 0 runners if qsize=0
 
 			diff := expected_runners - (queued + running)
-			if diff > 0 {
-				launch = max(launch, diff)
-			}
+			launch = max(launch, diff)
 		}
 	}
 	return
