@@ -147,7 +147,7 @@ func main() {
 			}
 			queued, running, err := workerStats(&workerEnv, alert.WorkerName)
 			if err != nil {
-				fmt.Printf("Could not get code stats for %s, %v", alert.WorkerName, err)
+				fmt.Printf("Could not get code stats for %s, err: %v\n", alert.WorkerName, err)
 				continue
 			}
 
@@ -212,10 +212,10 @@ func workerStats(env *config.Settings, codeName string) (queued, running int, er
 	}
 
 	if len(codeID) == 0 {
-		return 0, 0, fmt.Errorf("Could not get id for %s", codeName)
+		return 0, 0, fmt.Errorf("Could not find id for %q\n", codeName)
 	}
 	if len(env.ProjectId) == 0 || len(env.Token) == 0 {
-		return 0, 0, fmt.Errorf("Could not get env for %s", codeName)
+		return 0, 0, fmt.Errorf("Could not get env for %q\n", codeName)
 	}
 
 	url := fmt.Sprintf("https://%s/2/projects/%s/codes/%s/stats?oauth=%s", swapi, env.ProjectId, codeID, env.Token)
