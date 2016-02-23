@@ -238,7 +238,7 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 	for _, t := range triggers {
 		switch t.Typ {
 		case TriggerFixed:
-			if queueSize >= t.Value {
+			if queueSize >= t.Value && (queued+running) == 0 {
 				launch = max(launch, 1)
 			}
 		case TriggerProgressive:
