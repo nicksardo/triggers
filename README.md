@@ -82,6 +82,10 @@ Given a progressive value of 20 and a check interval of 1 minute, spawn two task
 `# of tasks created = (current - prev) / 20`  
 <img src="progressive.png" alt="Progessive Trigger" width="700" height="350">
 
+##### `min`
+Maintain a minimum of {value} workers at all times.  
+
+
 ## Deploying to IronWorker
 If you want to skip compiling the code yourself, you can go to step 3 and use `nicksardo/triggers:0.1`
 

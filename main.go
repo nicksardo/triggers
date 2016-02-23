@@ -25,6 +25,7 @@ const (
 	TriggerFixed       = "fixed"
 	TriggerProgressive = "progressive"
 	TriggerRatio       = "ratio"
+	TriggerMin         = "min"
 )
 
 var (
@@ -245,7 +246,6 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 			if queueSize < t.Value {
 				continue
 			}
-
 			previous_level := prevQueueSize / t.Value
 			current_level := queueSize / t.Value
 			launch = max(launch, current_level-previous_level)
@@ -254,7 +254,11 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 
 			diff := expected_runners - (queued + running)
 			launch = max(launch, diff)
+		case TriggerMin:
+			diff := t.Value - (queued + running)
+			launch = max(launch, diff)
 		}
 	}
+
 	return
 }
