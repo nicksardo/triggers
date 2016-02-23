@@ -1,5 +1,5 @@
 # Autoscale Triggers
-An IronWorker that scales up other workers based on IronMQ queue sizes.
+An IronWorker that scales up other workers based on IronMQ queue sizes.  You're welcome to fork/extend this repo or create your own.
 
 ## Local Testing
 If you do not have Go:
@@ -61,12 +61,26 @@ go run main.go
 
 #### Triggers
 Triggers will tell the scaler how many tasks to spawn.  Given more than one trigger to an alert object, the max tasks generated among all triggers will be used.
-###### `ratio`
-For every VALUE messages on the queue, spawn 1 task.
-###### `fixed`
-If the queue size = exactly VALUE, spawn 1 task.  
-###### `progressive`
-If the queue size grows by VALUE messages since the last check time, spawn 1 task. Note this is affected by the `interval` parameter.  
+
+##### `ratio` (recommended)
+Have one task queued or running for every {value} messages on the queue.
+
+Example:   
+Given a ratio value of 10, `# of tasks = queue size / 10`
+<img src="ratio.png" alt="Ratio Trigger" width="700" height="350">
+
+##### `fixed`
+If the queue size >= {value}, have at least one task queued or running.
+
+Example:  
+Given a fixed value of 50, have at least one task queued or running starting at time = 20 min.
+<img src="fixed.png" alt="Fixed Trigger" width="700" height="350">
+
+##### `progressive`
+If the queue size grows by {value} messages since the last check time, spawn 1 task. Note this is affected by the `interval` parameter.  
+Given a progressive value of 20 and a check interval of 1 minute, spawn two tasks.   
+`# of tasks created = (current - prev) / 20`  
+<img src="progressive.png" alt="Progessive Trigger" width="700" height="350">
 
 ## Deploying to IronWorker
 If you want to skip compiling the code yourself, you can go to step 3 and use `nicksardo/triggers:0.1`
