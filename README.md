@@ -15,17 +15,24 @@ export CONFIG_FILE=config.json
 go run main.go
 ```
 
-## Example configuration
+## Configuration
+You can define the configuration in two places:
+1.  `scale.json` file located in the same directory as the triggers executable
+1.  Visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the dequeuer worker
+
+Configuration from `scale.json` will take priority over configuration from HUD.  
+
+#### Example
 ```json
 {
 	"envs": {
-		"q":{
+		"someQueueEnv":{
     			"token": "AAA",
     			"project_id": "BBB",
                 "host": "mq-aws-us-east-1-1.iron.io",
 				"api_version": "3"
 		},
-		"w":{
+		"someWorkerEnv":{
     			"token": "AAA",
     			"project_id": "CCC"
 		}
@@ -33,9 +40,9 @@ go run main.go
 	"alerts": [
 			{
 			"queueName": "sampleQueue",
-			"queueEnv": "q",
+			"queueEnv": "someQueueEnv",
 			"workerName": "dequeuer",
-			"workerEnv": "w",
+			"workerEnv": "someWorkerEnv",
 			"triggers":[
 				{
 					"type":"ratio",
@@ -45,7 +52,7 @@ go run main.go
 			"cluster":"ABC"
 		}
 	],
-	"cacheEnv":"w",
+	"cacheEnv":"someWorkerEnv",
 	"interval": 10,
 	"runtime": 1800
 }
@@ -87,6 +94,8 @@ Maintain a minimum of {value} workers at all times.
 
 
 ## Deploying to IronWorker
+The following process describes one way to deploy your code to IronWorker - bundling the executable (and config file) into a docker image.  Another option is to zip your files and run `iron worker upload -zip myZip.zip -name triggers iron/base`
+
 If you want to skip compiling the code yourself, you can go to step 3 and use `nicksardo/triggers:0.1`
 
 ##### 1. Build this executable
@@ -95,6 +104,7 @@ docker run --rm -it -v $PWD:/go/src/a -w /go/src/a iron/go:dev sh -c "go get ./.
 ```
 
 ##### 2. Build dockerfile and push to your docker registry
+If you're using `scale.json`, modify the enclosed Dockerfile to `ADD` the file during image build.
 ```shell
 docker build -t {{youraccount}}/triggers:0.1 .
 docker push {{youraccount}}/triggers:0.1
@@ -102,9 +112,10 @@ docker push {{youraccount}}/triggers:0.1
 
 ##### 3. Test again by creating a config file and running your docker image
 ```shell
-vi prod_config.json  # create a config file called "prod_config.json" in an empty directory
-docker run --rm -it -e "CONFIG_FILE=prod_config.json" -v $PWD:/app {{youraccount}}/triggers
+vi someConfig.json  # create a config file called "someConfig.json" in an empty directory
+docker run --rm -it -e "CONFIG_FILE=someConfig.json" -v $PWD:/app {{youraccount}}/triggers
 ```
+Specifying the environment variable `CONFIG_FILE` isn't necessary if you built the image with `scale.json`.  
 
 ##### 4. Register your docker image with Iron.io
 ```shell
@@ -113,8 +124,7 @@ iron register {{youraccount}}/triggers:0.1
 ```
 
 ##### 5. Set configuration data
-Go to HUD and copy/paste your prod_config.json contents to the worker configuration.
-
+Visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the `nicksardo/triggers` code package.
 
 ##### 6. Schedule task every 30 minutes
 ```

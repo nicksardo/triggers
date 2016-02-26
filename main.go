@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
@@ -16,8 +17,8 @@ import (
 )
 
 var (
-	interval = 10 * time.Second
-	runtime  = 30 * time.Minute
+	interval = 10 * time.Second // default
+	runtime  = 30 * time.Minute // default
 	swapi    = "worker-aws-us-east-1.iron.io"
 )
 
@@ -26,6 +27,10 @@ const (
 	TriggerProgressive = "progressive"
 	TriggerRatio       = "ratio"
 	TriggerMin         = "min"
+)
+
+const (
+	configFile = "scale.json"
 )
 
 var (
@@ -67,11 +72,27 @@ func main() {
 	client = api.HttpClient
 
 	// Retrieve configuration
-	c := &Config{}
+	c, filled := &Config{}, false
 	worker.ParseFlags()
-	err := worker.ConfigFromJSON(c)
-	if err != nil {
-		log.Fatalln("Could not unparse config", err)
+
+	configData, err := ioutil.ReadFile(configFile)
+	if err == nil {
+		err = json.Unmarshal(configData, c)
+		if err != nil {
+			log.Fatalln("Could not parse config", err)
+		}
+		filled = true
+	}
+	if !filled {
+		err := worker.ConfigFromJSON(c)
+		if err != nil {
+			log.Fatalln("Could not parse config", err)
+		}
+		filled = true
+	}
+
+	if !filled {
+		log.Fatalf("Must either create a %s or specify config in HUD", configFile)
 	}
 
 	if len(c.Alerts) == 0 || len(c.Environments) == 0 {
