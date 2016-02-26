@@ -1,26 +1,33 @@
 # Autoscale Triggers
-An IronWorker that scales up other workers based on IronMQ queue sizes.  You're welcome to fork/extend this repo or create your own.
+An IronWorker that scales up other workers based on IronMQ queue sizes.  You're welcome to fork or copy/paste this repo or create your own.
+
+This worker will live for a default of 30 minutes and check queue sizes and worker counts every 10 seconds. Depending on your trigger settings, the process will enqueue 0..N tasks then wait for the next check interval. 
 
 ## Local Testing
 If you do not have Go:
 ```shell
-docker run --rm -it -v $PWD:/go/src/a -w /go/src/a -e "CONFIG_FILE=config.json" iron/go:dev sh -c "go get ./... && go run main.go"
+❯❯❯ docker run --rm -it -v $PWD:/go/src/a -w /go/src/a -e "CONFIG_FILE=config.json" iron/go:dev sh -c "go get ./... && go run main.go"
 ```
 
 If you have Go:
 ```shell
-go get github.com/NickSardo/triggers
-cd $GOPATH/src/github.com/NickSardo/triggers
-export CONFIG_FILE=config.json
-go run main.go
+❯❯❯  go get github.com/NickSardo/triggers
+❯❯❯  cd $GOPATH/src/github.com/NickSardo/triggers
+
+# To mimic HUD configuration
+❯❯❯  export CONFIG_FILE=config.json
+
+# To deploy scale.json
+❯❯❯  touch scale.json
+
+# Run
+❯❯❯  go run main.go
 ```
 
 ## Configuration
-You can define the configuration in two places:
-1.  `scale.json` file located in the same directory as the triggers executable
-1.  Visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the dequeuer worker
-
-Configuration from `scale.json` will take priority over configuration from HUD.  
+You can define the configuration in two places, but configuration set via `scale.json` has precedence.  
+1.  `scale.json` file located in the same directory as the triggers executable  
+1.  Visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the dequeuer worker  
 
 #### Example
 ```json
@@ -47,6 +54,10 @@ Configuration from `scale.json` will take priority over configuration from HUD.
 				{
 					"type":"ratio",
 					"value": 10
+				},
+				{
+					"type":"min",
+					"value": 3
 				}
 			],
 			"cluster":"ABC"
@@ -67,29 +78,29 @@ Configuration from `scale.json` will take priority over configuration from HUD.
 `runtime`: seconds this task will live for (optional, default: 1800 seconds)  
 
 #### Triggers
-Triggers will tell the scaler how many tasks to spawn.  Given more than one trigger to an alert object, the max tasks generated among all triggers will be used.
+Triggers will tell the scaler how many tasks to spawn.  Given more than one trigger to an alert object, the max number of tasks generated among each of the triggers will be used. 
 
-##### `ratio` (recommended)
+##### Type: `ratio` (recommended)
 Have one task queued or running for every {value} messages on the queue.
 
 Example:   
 Given a ratio value of 10, `# of tasks = queue size / 10`
 <img src="ratio.png" alt="Ratio Trigger" width="700" height="350">
 
-##### `fixed`
+##### Type: `fixed`
 If the queue size >= {value}, have at least one task queued or running.
 
 Example:  
 Given a fixed value of 50, have at least one task queued or running starting at time = 20 min.
 <img src="fixed.png" alt="Fixed Trigger" width="700" height="350">
 
-##### `progressive`
+##### Type: `progressive`
 If the queue size grows by {value} messages since the last check time, spawn 1 task. Note this is affected by the `interval` parameter.  
 Given a progressive value of 20 and a check interval of 1 minute, spawn two tasks.   
-`# of tasks created = (current - prev) / 20`  
+`# of tasks created = (current - prev) / 20`  ❯  `(105 - 60) / 20`  ❯ 2 tasks created  
 <img src="progressive.png" alt="Progessive Trigger" width="700" height="350">
 
-##### `min`
+##### Type: `min`
 Maintain a minimum of {value} workers at all times.  
 
 
@@ -100,34 +111,34 @@ If you want to skip compiling the code yourself, you can go to step 3 and use `n
 
 ##### 1. Build this executable
 ```shell
-docker run --rm -it -v $PWD:/go/src/a -w /go/src/a iron/go:dev sh -c "go get ./... && go build -o triggers"
+❯❯❯  docker run --rm -it -v $PWD:/go/src/a -w /go/src/a iron/go:dev sh -c "go get ./... && go build -o triggers"
 ```
 
 ##### 2. Build dockerfile and push to your docker registry
 If you're using `scale.json`, modify the enclosed Dockerfile to `ADD` the file during image build.
 ```shell
-docker build -t {{youraccount}}/triggers:0.1 .
-docker push {{youraccount}}/triggers:0.1
+❯❯❯ docker build -t {{youraccount}}/triggers:0.1 .
+❯❯❯  docker push {{youraccount}}/triggers:0.1
 ```
 
 ##### 3. Test again by creating a config file and running your docker image
 ```shell
-vi someConfig.json  # create a config file called "someConfig.json" in an empty directory
-docker run --rm -it -e "CONFIG_FILE=someConfig.json" -v $PWD:/app {{youraccount}}/triggers
+❯❯❯  vi someConfig.json  # create a config file called "someConfig.json" in an empty directory
+❯❯❯  docker run --rm -it -e "CONFIG_FILE=someConfig.json" -v $PWD:/app {{youraccount}}/triggers
 ```
 Specifying the environment variable `CONFIG_FILE` isn't necessary if you built the image with `scale.json`.  
 
 ##### 4. Register your docker image with Iron.io
 ```shell
 # Upload
-iron register {{youraccount}}/triggers:0.1
+❯❯❯  iron register {{youraccount}}/triggers:0.1
 ```
 
 ##### 5. Set configuration data
-Visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the `nicksardo/triggers` code package.
+If you didn't deploy a `scale.json`, visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the `{{youraccount}}/triggers` code package.
 
 ##### 6. Schedule task every 30 minutes
 ```
 # Schedule this to run every 30 minutes via CLI or HUD
-iron worker schedule -cluster default -run-every 1800 {{youraccount}}/triggers
+❯❯❯ iron worker schedule -cluster default -run-every 1800 {{youraccount}}/triggers
 ```
