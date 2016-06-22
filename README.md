@@ -1,7 +1,7 @@
 # Autoscale Triggers
 An IronWorker that scales up other workers based on IronMQ queue sizes.  You're welcome to fork or copy/paste this repo or create your own.
 
-This worker will live for a default of 30 minutes and check queue sizes and worker counts every 10 seconds. Depending on your trigger settings, the process will enqueue 0..N tasks then wait for the next check interval. 
+This worker will live for a default of 30 minutes and check queue sizes and worker counts every 10 seconds. Depending on your trigger settings, the process will enqueue 0..N tasks then wait for the next check interval.
 
 ## Local Testing
 If you do not have Go:
@@ -73,32 +73,33 @@ You can define the configuration in two places, but configuration set via `scale
 `alerts`: Array of objects, each object connects a queue to monitor and a worker to start   
 `queueEnv` or `workerEnv`: these values are found under defined environments above  
 `cluster`: tasks for this worker are spawned on this cluster   
+`priority`: priority for created tasks. 0 - normal, 1 - medium, 2 - highest (optional, default: 0)
 `cacheEnv`: this scaler code caches the last known queue size, provide an environment to Iron Cache  
 `interval`: polling frequency for checking the queue sizes & launching tasks (optional, default: 10 sec)    
 `runtime`: seconds this task will live for (optional, default: 1800 seconds)  
 
 #### Triggers
-Triggers will tell the scaler how many tasks to spawn.  Given more than one trigger to an alert object, the max number of tasks generated among each of the triggers will be used. 
+Triggers will tell the scaler how many tasks to spawn.  Given more than one trigger to an alert object, the max number of tasks generated among each of the triggers will be used.
 
 ##### Type: `ratio` (recommended)
 Have one task queued or running for every {value} messages on the queue.
 
 Example:   
 Given a ratio value of 10, `# of tasks = queue size / 10`
-<img src="ratio.png" alt="Ratio Trigger" width="700" height="350">
+<img src="http://imgur.com/rMNhMDx.png" alt="Ratio Trigger" width="700" height="350">
 
 ##### Type: `fixed`
 If the queue size >= {value}, have at least one task queued or running.
 
 Example:  
 Given a fixed value of 50, have at least one task queued or running starting at time = 20 min.
-<img src="fixed.png" alt="Fixed Trigger" width="700" height="350">
+<img src="http://imgur.com/Y3q5i30.png" alt="Fixed Trigger" width="700" height="350">
 
 ##### Type: `progressive`
 If the queue size grows by {value} messages since the last check time, spawn 1 task. Note this is affected by the `interval` parameter.  
 Given a progressive value of 20 and a check interval of 1 minute, spawn two tasks.   
 `# of tasks created = (current - prev) / 20`  ❯  `(105 - 60) / 20`  ❯ 2 tasks created  
-<img src="progressive.png" alt="Progessive Trigger" width="700" height="350">
+<img src="http://imgur.com/u2X3Cjs.png" alt="Progessive Trigger" width="700" height="350">
 
 ##### Type: `min`
 Maintain a minimum of {value} workers at all times.  

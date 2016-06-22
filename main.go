@@ -53,6 +53,7 @@ type QueueWorkerAlert struct {
 	WorkerName string    `json:"workerName"`
 	WorkerEnv  string    `json:"workerEnv"`
 	Cluster    string    `json:"cluster"`
+	Priority   int       `json:"priority"`
 	Triggers   []Trigger `json:"triggers"`
 }
 
@@ -184,6 +185,7 @@ func main() {
 				for x := 0; x < len(tasks); x++ {
 					tasks[x].CodeName = alert.WorkerName
 					tasks[x].Cluster = alert.Cluster
+					tasks[x].Priority = alert.Priority
 				}
 
 				_, err = w.TaskQueue(tasks...)
