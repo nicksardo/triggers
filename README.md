@@ -1,7 +1,7 @@
 # Autoscale Triggers
-An IronWorker that scales up other workers based on IronMQ queue sizes.  You're welcome to fork or copy/paste this repo or create your own.
+A process that scales up IronWorkers based on IronMQ queue sizes.
 
-This worker will live for a default of 30 minutes and check queue sizes and worker counts every 10 seconds. Depending on your trigger settings, the process will enqueue 0..N tasks then wait for the next check interval.
+This worker will live for a default of 30 minutes and check queue sizes and worker stats every 10 seconds. Depending on your trigger settings, the process will enqueue 0..N tasks then wait for the next check interval.
 
 ## Local Testing
 If you do not have Go:
@@ -14,11 +14,8 @@ If you have Go:
 ❯❯❯  go get github.com/NickSardo/triggers
 ❯❯❯  cd $GOPATH/src/github.com/NickSardo/triggers
 
-# To mimic HUD configuration
-❯❯❯  export CONFIG_FILE=config.json
-
-# To deploy scale.json
-❯❯❯  touch scale.json
+# Create a scale.json
+❯❯❯  vi scale.json
 
 # Run
 ❯❯❯  go run main.go
@@ -27,49 +24,48 @@ If you have Go:
 ## Configuration
 You can define the configuration in two places, but configuration set via `scale.json` has precedence.  
 1.  `scale.json` file located in the same directory as the triggers executable  
-1.  Visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the dequeuer worker  
+1.  Visit [hud.iron.io](https://hud.iron.io) and modify the configuration for the dequeuer worker.
 
 #### Example
 ```json
 {
 	"envs": {
-		"someQueueEnv":{
+		"iron_mq":{
+			"host": "mq-aws-us-east-1-1.iron.io",
+			"api_version": "3"
+		},
+		"projectA":{
     			"token": "AAA",
     			"project_id": "BBB",
-                "host": "mq-aws-us-east-1-1.iron.io",
-				"api_version": "3"
-		},
-		"someWorkerEnv":{
-    			"token": "AAA",
-    			"project_id": "CCC"
 		}
 	},
 	"alerts": [
 			{
 			"queueName": "sampleQueue",
-			"queueEnv": "someQueueEnv",
+			"queueEnv": "projectA",
 			"workerName": "dequeuer",
-			"workerEnv": "someWorkerEnv",
+			"workerEnv": "projectA",
 			"triggers":[
 				{
-					"type":"ratio",
+					"type": "ratio",
 					"value": 10
 				},
 				{
-					"type":"min",
+					"type": "min",
 					"value": 3
 				}
 			],
-			"cluster":"ABC"
+			"cluster": "ABC",
+			"interval": 3,
+			"priority": 1
 		}
 	],
-	"cacheEnv":"someWorkerEnv",
-	"interval": 10,
+	"cacheEnv":"projectA",
 	"runtime": 1800
 }
 ```
 
-`envs`: named map of bjects describing different Iron.io environments. See dev.iron.io for more information  
+`envs`: named map of objects describing different Iron.io environments. See dev.iron.io for more information about configuration  
 `alerts`: Array of objects, each object connects a queue to monitor and a worker to start   
 `queueEnv` or `workerEnv`: these values are found under defined environments above  
 `cluster`: tasks for this worker are spawned on this cluster   

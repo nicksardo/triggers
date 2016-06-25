@@ -1,12 +1,10 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"log"
-	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/iron-io/iron_go3/api"
@@ -16,188 +14,216 @@ import (
 	"github.com/iron-io/iron_go3/worker"
 )
 
-var (
-	interval = 10 * time.Second // default
-	runtime  = 30 * time.Minute // default
-	swapi    = "worker-aws-us-east-1.iron.io"
-)
-
 const (
-	TriggerFixed       = "fixed"
-	TriggerProgressive = "progressive"
-	TriggerRatio       = "ratio"
-	TriggerMin         = "min"
-)
-
-const (
-	configFile = "scale.json"
+	defaultInterval = 10 * time.Second
+	defaultRuntime  = 30 * time.Minute
+	defaultSwapi    = "https://worker-aws-us-east-1.iron.io"
+	configFile      = "scale.json"
 )
 
 var (
-	prev    map[string]int
-	codeIds map[string]string
-	client  *http.Client
+	s = state{
+		queueSizes: make(map[string]int),
+		codeIds:    make(map[string]string),
+	}
+	client = api.HttpClient
+	c      *Config
+	qCache *cache.Cache
 )
 
-type Config struct {
-	Environments map[string]config.Settings `json:"envs"`
-	Alerts       []QueueWorkerAlert         `json:"alerts"`
-	CacheEnv     string                     `json:"cacheEnv"`
-	Interval     *int                       `json:"interval,omitempty"`
-	Runtime      *int                       `json:"runtime,omitempty"`
+func main() {
+	var err error
+	c, err = getConfig(configFile)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	// Setup cache settings
+	cacheEnv, exists := c.getSettings("cache", c.CacheEnv)
+	if !exists {
+		log.Fatalln("No cache environment set")
+		return
+	}
+	qCache = &cache.Cache{Settings: *cacheEnv, Name: "autoscale-prevs"}
+
+	// Determine runtime
+	runtime := defaultRuntime
+	if c.Runtime != nil {
+		runtime = time.Duration(*c.Runtime) * time.Second
+	}
+
+	// Start watchers
+	wg := &sync.WaitGroup{}
+	stop := make(chan struct{})
+	for _, alert := range c.Alerts {
+		if len(alert.Triggers) == 0 {
+			continue
+		}
+
+		wg.Add(1)
+		go watchTriggers(alert, wg, stop)
+	}
+
+	// Main goroutine sleeps, stops, then exits
+	time.Sleep(runtime)
+	close(stop)
+	wg.Wait()
 }
 
-type QueueWorkerAlert struct {
-	QueueName  string    `json:"queueName"`
-	QueueEnv   string    `json:"queueEnv"`
-	WorkerName string    `json:"workerName"`
-	WorkerEnv  string    `json:"workerEnv"`
-	Cluster    string    `json:"cluster"`
-	Priority   int       `json:"priority"`
-	Triggers   []Trigger `json:"triggers"`
+func watchTriggers(a QueueWorkerAlert, wg *sync.WaitGroup, stop chan struct{}) {
+	defer wg.Done()
+
+	// Determine trigger check interval
+	interval := defaultInterval
+	if a.Interval != nil && *a.Interval >= 1 {
+		interval = time.Duration(*a.Interval) * time.Second
+	}
+
+	// Queue Settings
+	queueEnv, exists := c.getSettings("mq", a.QueueEnv)
+	if !exists {
+		log.Printf("Environment %q is not defined for queue %q", a.QueueEnv, a.QueueName)
+		return
+	}
+	q := mq.ConfigNew(a.QueueName, queueEnv)
+
+	// Worker Settings
+	workerEnv, exists := c.getSettings("worker", a.WorkerEnv)
+	if !exists {
+		log.Printf("Environment %q is not defined for queue %q", a.QueueEnv, a.QueueName)
+		return
+	}
+
+	knowPrevious := a.needPreviousSize()
+
+Loop:
+	for {
+		checkTriggers(a, q, workerEnv, a.WorkerName, knowPrevious)
+
+		// Decide to stop looping
+		select {
+		case <-stop:
+			break Loop
+		default:
+		}
+
+		time.Sleep(interval)
+	}
 }
 
-type Trigger struct {
-	Typ   string `json:"type"`
-	Value int    `json:"value"`
+func checkTriggers(a QueueWorkerAlert, q mq.Queue, workerEnv *config.Settings, codeName string, knowPrevious bool) {
+	qKey := queueKey(a)
+
+	queueSizePrev, sizePrevExists := 0, false
+	if knowPrevious {
+		queueSizePrev, sizePrevExists = queuePrevSize(qKey)
+	}
+	queueSizeCurr, sizeCurrErr := queueCurrSize(qKey, q)
+
+	if sizeCurrErr != nil {
+		log.Printf("Could not get info about %s: %v", q.Name, sizeCurrErr)
+		return
+	} else if knowPrevious {
+		// Update cache value
+		go qCache.Set(qKey, queueSizeCurr, 900)
+	}
+
+	// Update previous value
+	if sizePrevExists {
+		s.setQueueSize(qKey, queueSizeCurr)
+	} else {
+		queueSizePrev = queueSizeCurr
+	}
+
+	queued, running, err := codeStats(workerEnv, codeName)
+	if err != nil {
+		log.Printf("Could not get code stats for %s, err: %v", codeName, err)
+		return
+	}
+
+	launch := evalTriggers(queued, running, queueSizeCurr, queueSizePrev, a.Triggers)
+
+	launchStmt := ""
+	if launch > 0 {
+		launchStmt = " Launching " + strconv.Itoa(launch)
+		w := &worker.Worker{Settings: *workerEnv}
+
+		tasks := make([]worker.Task, launch)
+		for x := 0; x < len(tasks); x++ {
+			tasks[x].CodeName = a.WorkerName
+			tasks[x].Cluster = a.Cluster
+			tasks[x].Priority = a.Priority
+		}
+
+		_, err = w.TaskQueue(tasks...)
+		if err != nil {
+			log.Println("Could not create tasks for", a.WorkerName)
+			return
+		}
+	}
+
+	prevStmt := ""
+	if sizePrevExists {
+		prevStmt = ", prev: " + strconv.Itoa(queueSizePrev)
+	}
+	log.Printf("Queue: %s (size: %d%s), CodeName: %s (queued: %d, running: %d)%s", q.Name, queueSizeCurr, prevStmt, a.WorkerName, queued, running, launchStmt)
+
 }
 
 func queueKey(qw QueueWorkerAlert) string {
 	return qw.QueueEnv + "|" + qw.QueueName
 }
 
-func main() {
-	start := time.Now()
-	prev = make(map[string]int)
-	codeIds = make(map[string]string)
-	client = api.HttpClient
+func queuePrevSize(key string) (int, bool) {
+	if v, exists := s.getQueueSize(key); exists {
+		return v, true
+	}
 
-	// Retrieve configuration
-	c, filled := &Config{}, false
-	worker.ParseFlags()
-
-	configData, err := ioutil.ReadFile(configFile)
+	vCached, err := qCache.Get(key)
 	if err == nil {
-		err = json.Unmarshal(configData, c)
-		if err != nil {
-			log.Fatalln("Could not parse config", err)
+		return int(vCached.(float64)), true
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		log.Println(err) // Print errors not associated with cache/key not found errors
+	}
+	return 0, false
+}
+
+func queueCurrSize(key string, q mq.Queue) (int, error) {
+	i, err := q.Info()
+	if err != nil {
+		return 0, err
+	}
+
+	return i.Size, err
+}
+
+func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trigger) (launch int) {
+	for _, t := range triggers {
+		switch t.Typ {
+		case "fixed":
+			if queueSize >= t.Value && (queued+running) == 0 {
+				launch = max(launch, 1)
+			}
+		case "progressive":
+			if queueSize < t.Value {
+				continue
+			}
+			previous_level := prevQueueSize / t.Value
+			current_level := queueSize / t.Value
+			launch = max(launch, current_level-previous_level)
+		case "ratio":
+			expected_runners := (queueSize + t.Value - 1) / t.Value // Only have 0 runners if qsize=0
+
+			diff := expected_runners - (queued + running)
+			launch = max(launch, diff)
+		case "min":
+			diff := t.Value - (queued + running)
+			launch = max(launch, diff)
 		}
-		filled = true
-	}
-	if !filled {
-		err := worker.ConfigFromJSON(c)
-		if err != nil {
-			log.Fatalln("Could not parse config", err)
-		}
-		filled = true
 	}
 
-	if !filled {
-		log.Fatalf("Must either create a %s or specify config in HUD", configFile)
-	}
-
-	if len(c.Alerts) == 0 || len(c.Environments) == 0 {
-		fmt.Println("No config set")
-		return
-	}
-
-	if c.Interval != nil {
-		interval = time.Duration(*c.Interval) * time.Second
-	}
-
-	if c.Runtime != nil {
-		runtime = time.Duration(*c.Runtime) * time.Second
-	}
-
-	cacheEnv, exists := c.Environments[c.CacheEnv]
-	if !exists {
-		log.Fatalln("No cache environment set")
-		return
-	}
-
-	cacheConfig := config.ManualConfig("iron_cache", &cacheEnv)
-	queueCache := &cache.Cache{Settings: cacheConfig, Name: "autoscale-prevs"}
-	for {
-		if time.Since(start) > runtime {
-			break
-		}
-
-		for _, alert := range c.Alerts {
-			if len(alert.Triggers) == 0 {
-				fmt.Println("No triggers found for alert")
-				continue
-			}
-
-			queueSize, prevQueueSize := 0, 0
-			key := queueKey(alert)
-
-			// Get previous size
-			if _, e := prev[key]; !e {
-				v, err := queueCache.Get(key)
-				if err != nil {
-					if !strings.Contains(err.Error(), "not found") {
-						// Print errors not associated with cache/key not found errors
-						fmt.Println(err)
-					}
-				} else {
-					prev[key] = int(v.(float64))
-				}
-			}
-			prevQueueSize = prev[key]
-
-			queueEnv, exists := c.Environments[alert.QueueEnv]
-			if !exists {
-				fmt.Printf("Environment %q is not defined for queue %q\n", alert.QueueEnv, alert.QueueName)
-				continue
-			}
-
-			queueConfig := config.ManualConfig("iron_mq", &queueEnv)
-			q := mq.ConfigNew(alert.QueueName, &queueConfig)
-			info, err := q.Info()
-			if err != nil {
-				fmt.Println("Could not get information about", alert.QueueName, err)
-				continue
-			}
-			queueSize = info.Size
-			// Update previous size
-			go queueCache.Set(key, queueSize, 900)
-			prev[key] = queueSize
-
-			workerEnv, exists := c.Environments[alert.WorkerEnv]
-			if !exists {
-				fmt.Printf("Environment %q is not defined for worker %q\n", alert.WorkerEnv, alert.WorkerName)
-				continue
-			}
-			queued, running, err := workerStats(&workerEnv, alert.WorkerName)
-			if err != nil {
-				fmt.Printf("Could not get code stats for %s, err: %v\n", alert.WorkerName, err)
-				continue
-			}
-
-			launch := evalTriggers(queued, running, queueSize, prevQueueSize, alert.Triggers)
-			fmt.Printf("%v | Queue: %s (size=%d, prev=%d), CodeName=%s (queued=%d, running=%d), Launching %d\n", time.Now().Format(time.ANSIC), alert.QueueName, queueSize, prevQueueSize, alert.WorkerName, queued, running, launch)
-
-			if launch > 0 {
-				workerConfig := config.ManualConfig("iron_worker", &workerEnv)
-				w := &worker.Worker{Settings: workerConfig}
-
-				tasks := make([]worker.Task, launch)
-				for x := 0; x < len(tasks); x++ {
-					tasks[x].CodeName = alert.WorkerName
-					tasks[x].Cluster = alert.Cluster
-					tasks[x].Priority = alert.Priority
-				}
-
-				_, err = w.TaskQueue(tasks...)
-				if err != nil {
-					fmt.Println("Could not create tasks for", alert.WorkerName)
-					continue
-				}
-			}
-		}
-
-		time.Sleep(interval)
-	}
+	return
 }
 
 func max(a, b int) int {
@@ -205,83 +231,4 @@ func max(a, b int) int {
 		return a
 	}
 	return b
-}
-
-func workerKey(projectID, codeName string) string {
-	return projectID + "|" + codeName
-}
-
-type CodeStats struct {
-	Running int `json:"running"`
-	Queued  int `json:"queued"`
-	// ignore other states
-}
-
-func workerStats(env *config.Settings, codeName string) (queued, running int, err error) {
-	codeID, exists := codeIds[workerKey(env.ProjectId, codeName)]
-	if !exists {
-		workerConfig := config.ManualConfig("iron_worker", env)
-		w := &worker.Worker{Settings: workerConfig}
-		codes, err := w.CodePackageList(0, 100)
-		if err != nil {
-			return 0, 0, err
-		}
-
-		for _, c := range codes {
-			codeIds[workerKey(c.ProjectId, c.Name)] = c.Id
-			if c.Name == codeName {
-				codeID = c.Id
-			}
-		}
-	}
-
-	if len(codeID) == 0 {
-		return 0, 0, fmt.Errorf("Could not find id for %q\n", codeName)
-	}
-	if len(env.ProjectId) == 0 || len(env.Token) == 0 {
-		return 0, 0, fmt.Errorf("Could not get env for %q\n", codeName)
-	}
-
-	url := fmt.Sprintf("https://%s/2/projects/%s/codes/%s/stats?oauth=%s", swapi, env.ProjectId, codeID, env.Token)
-	resp, err := client.Get(url)
-	if err != nil {
-		return 0, 0, err
-	}
-	defer resp.Body.Close()
-	decoder := json.NewDecoder(resp.Body)
-	var s CodeStats
-	err = decoder.Decode(&s)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	return s.Queued, s.Running, nil
-}
-
-func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trigger) (launch int) {
-	for _, t := range triggers {
-		switch t.Typ {
-		case TriggerFixed:
-			if queueSize >= t.Value && (queued+running) == 0 {
-				launch = max(launch, 1)
-			}
-		case TriggerProgressive:
-			if queueSize < t.Value {
-				continue
-			}
-			previous_level := prevQueueSize / t.Value
-			current_level := queueSize / t.Value
-			launch = max(launch, current_level-previous_level)
-		case TriggerRatio:
-			expected_runners := (queueSize + t.Value - 1) / t.Value // Only have 0 runners if qsize=0
-
-			diff := expected_runners - (queued + running)
-			launch = max(launch, diff)
-		case TriggerMin:
-			diff := t.Value - (queued + running)
-			launch = max(launch, diff)
-		}
-	}
-
-	return
 }
