@@ -1,32 +1,35 @@
 {
 	"envs": {
-		"q":{
+		"iron_mq":{
+			"host": "mq-aws-us-east-1-1.iron.io",
+			"api_version": "3"
+		},
+		"projectA":{
     			"token": "AAA",
     			"project_id": "BBB",
-                "host": "abc.iron.io",
-				"api_version": "3"
-		},
-		"w":{
-    			"token": "AAA",
-    			"project_id": "CCC"
 		}
 	},
 	"alerts": [
 			{
 			"queueName": "sampleQueue",
-			"queueEnv": "q",
+			"queueEnv": "projectA",
 			"workerName": "dequeuer",
-			"workerEnv": "w",
+			"workerEnv": "projectA",
 			"triggers":[
 				{
-					"type":"ratio",
+					"type": "ratio",
 					"value": 10
+				},
+				{
+					"type": "min",
+					"value": 3
 				}
 			],
-			"cluster":"ABC"
+			"cluster": "ABC",
+			"interval": 3,
+			"priority": 1
 		}
 	],
-	"cacheEnv":"w",
-	"interval": 10,
+	"cacheEnv":"projectA",
 	"runtime": 1800
 }

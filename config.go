@@ -40,12 +40,12 @@ func getConfig(fileName string) (*Config, error) {
 		reader, err := worker.ConfigReader()
 		defer reader.Close()
 		if err != nil {
-			return nil, fmt.Errorf("Could not read config")
+			return nil, fmt.Errorf("Could not read config: %v", err)
 		}
 
 		configData, err = ioutil.ReadAll(reader)
 		if err != nil {
-			return nil, fmt.Errorf("Could not read all of config")
+			return nil, fmt.Errorf("Could not read all of config: %v", err)
 		}
 	}
 
@@ -55,7 +55,7 @@ func getConfig(fileName string) (*Config, error) {
 
 	err = json.Unmarshal(configData, c)
 	if err != nil {
-		return nil, fmt.Errorf("Could not config file %s: %v\n", fileName, err)
+		return nil, fmt.Errorf("Could not unmarshal data %v\n", err)
 	}
 
 	return c, nil

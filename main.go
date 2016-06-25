@@ -32,6 +32,8 @@ var (
 )
 
 func main() {
+	worker.ParseFlags()
+
 	var err error
 	c, err = getConfig(configFile)
 	if err != nil {
