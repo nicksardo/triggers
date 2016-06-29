@@ -101,6 +101,17 @@ Given a progressive value of 20 and a check interval of 1 minute, spawn two task
 Maintain a minimum of {value} workers at all times.  
 
 
+## Spawned Task
+Triggers will send a copy of the trigger configuration that caused this task to launch. For instance, if a `min` trigger caused a single task to start, the worker's payload will be
+```json
+{
+	"type": "min",
+	"value": 1
+}
+```
+
+If a `ratio` trigger caused N tasks to be created, each will have the `ratio` setting as defined in the configuration.  See the `printer` folder for an example of reading the payload into a struct.
+
 ## Deploying to IronWorker
 The following process describes one way to deploy your code to IronWorker - bundling the executable (and config file) into a docker image.  Another option is to zip your files and run `iron worker upload -zip myZip.zip -name triggers iron/base`
 
