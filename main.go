@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"strconv"
 	"strings"
@@ -143,18 +144,23 @@ func checkTriggers(a QueueWorkerAlert, q mq.Queue, workerEnv *config.Settings, c
 		return
 	}
 
-	launch := evalTriggers(queued, running, queueSizeCurr, queueSizePrev, a.Triggers)
+	// Determine amount of tasks to launch
+	launch, maxTrigger := evalTriggers(queued, running, queueSizeCurr, queueSizePrev, a.Triggers)
 
 	launchStmt := ""
 	if launch > 0 {
 		launchStmt = " Launching " + strconv.Itoa(launch)
-		w := &worker.Worker{Settings: *workerEnv}
 
+		d, _ := json.Marshal(maxTrigger)
+		dstr := string(d)
+
+		w := &worker.Worker{Settings: *workerEnv}
 		tasks := make([]worker.Task, launch)
 		for x := 0; x < len(tasks); x++ {
 			tasks[x].CodeName = a.WorkerName
 			tasks[x].Cluster = a.Cluster
 			tasks[x].Priority = a.Priority
+			tasks[x].Payload = dstr
 		}
 
 		_, err = w.TaskQueue(tasks...)
@@ -200,12 +206,14 @@ func queueCurrSize(key string, q mq.Queue) (int, error) {
 	return i.Size, err
 }
 
-func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trigger) (launch int) {
+func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trigger) (launch int, maxTrigger Trigger) {
 	for _, t := range triggers {
+		tlaunch := 0
+
 		switch t.Typ {
 		case "fixed":
 			if queueSize >= t.Value && (queued+running) == 0 {
-				launch = max(launch, 1)
+				tlaunch = 1
 			}
 		case "progressive":
 			if queueSize < t.Value {
@@ -213,24 +221,21 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 			}
 			previous_level := prevQueueSize / t.Value
 			current_level := queueSize / t.Value
-			launch = max(launch, current_level-previous_level)
+			tlaunch = current_level - previous_level
 		case "ratio":
 			expected_runners := (queueSize + t.Value - 1) / t.Value // Only have 0 runners if qsize=0
-
 			diff := expected_runners - (queued + running)
-			launch = max(launch, diff)
+			tlaunch = diff
 		case "min":
 			diff := t.Value - (queued + running)
-			launch = max(launch, diff)
+			tlaunch = diff
+		}
+
+		if tlaunch > launch {
+			launch = tlaunch
+			maxTrigger = t
 		}
 	}
 
-	return
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
+	return launch, maxTrigger
 }
