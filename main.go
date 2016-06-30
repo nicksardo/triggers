@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -85,7 +86,7 @@ func watchTriggers(a QueueWorkerAlert, wg *sync.WaitGroup, stop chan struct{}) {
 	// Queue Settings
 	queueEnv, exists := c.getSettings("mq", a.QueueEnv)
 	if !exists {
-		log.Printf("Environment %q is not defined for queue %q", a.QueueEnv, a.QueueName)
+		fmt.Printf("Environment %q is not defined for queue %q\n", a.QueueEnv, a.QueueName)
 		return
 	}
 	q := mq.ConfigNew(a.QueueName, queueEnv)
@@ -93,7 +94,7 @@ func watchTriggers(a QueueWorkerAlert, wg *sync.WaitGroup, stop chan struct{}) {
 	// Worker Settings
 	workerEnv, exists := c.getSettings("worker", a.WorkerEnv)
 	if !exists {
-		log.Printf("Environment %q is not defined for queue %q", a.QueueEnv, a.QueueName)
+		fmt.Printf("Environment %q is not defined for queue %q\n", a.QueueEnv, a.QueueName)
 		return
 	}
 
@@ -124,7 +125,7 @@ func checkTriggers(a QueueWorkerAlert, q mq.Queue, workerEnv *config.Settings, c
 	queueSizeCurr, sizeCurrErr := queueCurrSize(qKey, q)
 
 	if sizeCurrErr != nil {
-		log.Printf("Could not get info about %s: %v", q.Name, sizeCurrErr)
+		fmt.Printf("Could not get info about %s: %v\n", q.Name, sizeCurrErr)
 		return
 	} else if knowPrevious {
 		// Update cache value
@@ -140,7 +141,7 @@ func checkTriggers(a QueueWorkerAlert, q mq.Queue, workerEnv *config.Settings, c
 
 	queued, running, err := codeStats(workerEnv, codeName)
 	if err != nil {
-		log.Printf("Could not get code stats for %s, err: %v", codeName, err)
+		fmt.Printf("Could not get code stats for %s, err: %v\n", codeName, err)
 		return
 	}
 
@@ -165,7 +166,7 @@ func checkTriggers(a QueueWorkerAlert, q mq.Queue, workerEnv *config.Settings, c
 
 		_, err = w.TaskQueue(tasks...)
 		if err != nil {
-			log.Println("Could not create tasks for", a.WorkerName)
+			fmt.Println("Could not create tasks for", a.WorkerName)
 			return
 		}
 	}
@@ -174,7 +175,7 @@ func checkTriggers(a QueueWorkerAlert, q mq.Queue, workerEnv *config.Settings, c
 	if sizePrevExists {
 		prevStmt = ", prev: " + strconv.Itoa(queueSizePrev)
 	}
-	log.Printf("Queue: %s (size: %d%s), CodeName: %s (queued: %d, running: %d)%s", q.Name, queueSizeCurr, prevStmt, a.WorkerName, queued, running, launchStmt)
+	fmt.Printf("Queue: %s (size: %d%s), CodeName: %s (queued: %d, running: %d)%s\n", q.Name, queueSizeCurr, prevStmt, a.WorkerName, queued, running, launchStmt)
 
 }
 
@@ -192,7 +193,7 @@ func queuePrevSize(key string) (int, bool) {
 		return int(vCached.(float64)), true
 	}
 	if !strings.Contains(err.Error(), "not found") {
-		log.Println(err) // Print errors not associated with cache/key not found errors
+		fmt.Println(err) // Print errors not associated with cache/key not found errors
 	}
 	return 0, false
 }
