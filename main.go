@@ -148,6 +148,15 @@ func checkTriggers(a QueueWorkerAlert, q mq.Queue, workerEnv *config.Settings, c
 	// Determine amount of tasks to launch
 	launch, maxTrigger := evalTriggers(queued, running, queueSizeCurr, queueSizePrev, a.Triggers)
 
+	if a.Min != nil && (launch+queued+running) < *a.Min {
+		launch = *a.Min - queued - running
+		maxTrigger = minTrigger(*a.Min)
+	}
+
+	if a.Max != nil && (launch+queued+running) > *a.Max {
+		launch = *a.Max - queued - running
+	}
+
 	launchStmt := ""
 	if launch > 0 {
 		launchStmt = " Launching " + strconv.Itoa(launch)
@@ -227,9 +236,6 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 			expected_runners := (queueSize + t.Value - 1) / t.Value // Only have 0 runners if qsize=0
 			diff := expected_runners - (queued + running)
 			tlaunch = diff
-		case "min":
-			diff := t.Value - (queued + running)
-			tlaunch = diff
 		}
 
 		if tlaunch > launch {
@@ -239,4 +245,11 @@ func evalTriggers(queued, running, queueSize, prevQueueSize int, triggers []Trig
 	}
 
 	return launch, maxTrigger
+}
+
+func minTrigger(i int) Trigger {
+	return Trigger{
+		Typ:   "min",
+		Value: i,
+	}
 }

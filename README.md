@@ -49,15 +49,13 @@ You can define the configuration in two places, but configuration set via `scale
 				{
 					"type": "ratio",
 					"value": 10
-				},
-				{
-					"type": "min",
-					"value": 3
 				}
 			],
 			"cluster": "ABC",
 			"interval": 3,
-			"priority": 1
+			"priority": 1,
+			"min": 3,
+			"max": 20
 		}
 	],
 	"cacheEnv":"projectA",
@@ -70,6 +68,8 @@ You can define the configuration in two places, but configuration set via `scale
 `queueEnv` or `workerEnv`: these values are found under defined environments above  
 `cluster`: tasks for this worker are spawned on this cluster   
 `priority`: priority for created tasks. 0 - normal, 1 - medium, 2 - highest (optional, default: 0)
+`min`: minimum number of tasks queued or running regardless of triggers.
+`max`: maximum number of tasks. No more tasks will be created regardless of triggers.
 `cacheEnv`: this scaler code caches the last known queue size, provide an environment to Iron Cache  
 `interval`: polling frequency for checking the queue sizes & launching tasks (optional, default: 10 sec)    
 `runtime`: seconds this task will live for (optional, default: 1800 seconds)  
@@ -97,12 +97,9 @@ Given a progressive value of 20 and a check interval of 1 minute, spawn two task
 `# of tasks created = (current - prev) / 20`  ❯  `(105 - 60) / 20`  ❯ 2 tasks created  
 <img src="http://imgur.com/u2X3Cjs.png" alt="Progessive Trigger" width="700" height="350">
 
-##### Type: `min`
-Maintain a minimum of {value} workers at all times.  
-
 
 ## Spawned Task
-Triggers will send a copy of the trigger configuration that caused this task to launch. For instance, if a `min` trigger caused a single task to start, the worker's payload will be
+Triggers will send a copy of the trigger configuration that caused this task to launch. If the `min` setting caused tasks to be created, a trigger is created with type `min`.
 ```json
 {
 	"type": "min",
@@ -110,7 +107,7 @@ Triggers will send a copy of the trigger configuration that caused this task to 
 }
 ```
 
-If a `ratio` trigger caused N tasks to be created, each will have the `ratio` setting as defined in the configuration.  See the `printer` folder for an example of reading the payload into a struct.
+If a `ratio` trigger caused `N` tasks to be created, each task will have the `ratio` setting as defined in the configuration in the payload.  See the `printer` folder for an example of reading the payload into a struct.
 
 ## Deploying to IronWorker
 The following process describes one way to deploy your code to IronWorker - bundling the executable (and config file) into a docker image.  Another option is to zip your files and run `iron worker upload -zip myZip.zip -name triggers iron/base`

@@ -26,6 +26,8 @@ type QueueWorkerAlert struct {
 	Priority   int       `json:"priority"`
 	Interval   *int      `json:"interval"`
 	Triggers   []Trigger `json:"triggers"`
+	Min        *int      `json:"min"`
+	Max        *int      `json:"max"`
 }
 
 type Trigger struct {
