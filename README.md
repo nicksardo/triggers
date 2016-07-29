@@ -68,8 +68,8 @@ You can define the configuration in two places, but configuration set via `scale
 `queueEnv` or `workerEnv`: these values are found under defined environments above  
 `cluster`: tasks for this worker are spawned on this cluster   
 `priority`: priority for created tasks. 0 - normal, 1 - medium, 2 - highest (optional, default: 0)   
-`min`: minimum number of tasks queued or running regardless of triggers.   
-`max`: maximum number of tasks. No more tasks will be created regardless of triggers.   
+`min`: minimum number of tasks queued or running regardless of triggers (optional, default: none)   
+`max`: maximum number of tasks. No more tasks will be created regardless of triggers (optional, default: none)   
 `cacheEnv`: this scaler code caches the last known queue size, provide an environment to Iron Cache  
 `interval`: polling frequency for checking the queue sizes & launching tasks (optional, default: 10 sec)    
 `runtime`: seconds this task will live for (optional, default: 1800 seconds)  
