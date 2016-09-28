@@ -19,7 +19,6 @@ import (
 const (
 	defaultInterval = 10 * time.Second
 	defaultRuntime  = 30 * time.Minute
-	defaultSwapi    = "https://worker-aws-us-east-1.iron.io"
 	configFile      = "scale.json"
 )
 
