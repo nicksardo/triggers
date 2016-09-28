@@ -42,7 +42,7 @@ func codeStats(env *config.Settings, codeName string) (queued, running int, err 
 		return 0, 0, fmt.Errorf("Could not get env for %q\n", codeName)
 	}
 
-	url := fmt.Sprintf("%s/2/projects/%s/codes/%s/stats?oauth=%s", defaultSwapi, env.ProjectId, codeId, env.Token)
+	url := fmt.Sprintf("%s://%s/2/projects/%s/codes/%s/stats?oauth=%s", env.Scheme, env.Host, env.ProjectId, codeId, env.Token)
 	resp, err := client.Get(url)
 	if err != nil {
 		return 0, 0, err
